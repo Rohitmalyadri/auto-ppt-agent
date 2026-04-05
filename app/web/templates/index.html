@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auto-PPT Agent — AI Presentation Generator</title>
+  <meta name="description" content="Generate professional PowerPoint presentations from a single sentence using AI." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Reset & Base ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:          #080c14;
+      --surface:     #0e1422;
+      --surface2:    #141c2e;
+      --border:      #1e2d4d;
+      --accent:      #5e81f4;
+      --accent-dim:  #3a57c8;
+      --accent2:     #9b59b6;
+      --accent-glow: rgba(94,129,244,0.18);
+      --success:     #27ae60;
+      --error:       #e74c3c;
+      --warning:     #f39c12;
+      --text:        #e8eeff;
+      --text-muted:  #7a8baf;
+      --text-dim:    #3d4f72;
+      --radius:      14px;
+      --font:        'Inter', system-ui, sans-serif;
+      --mono:        'JetBrains Mono', monospace;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ─── Animated Background ───────────────────────────────────────────────── */
+    .bg-grid {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(var(--border) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 60px 60px;
+      opacity: 0.25;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+    }
+    .bg-orb {
+      position: fixed; border-radius: 50%; filter: blur(90px);
+      pointer-events: none; z-index: 0; opacity: 0.12;
+    }
+    .bg-orb-1 {
+      width: 600px; height: 600px;
+      background: var(--accent);
+      top: -200px; left: -100px;
+      animation: float1 12s ease-in-out infinite;
+    }
+    .bg-orb-2 {
+      width: 500px; height: 500px;
+      background: var(--accent2);
+      bottom: -150px; right: -100px;
+      animation: float2 15s ease-in-out infinite;
+    }
+    @keyframes float1 {
+      0%, 100% { transform: translate(0,0); }
+      50%       { transform: translate(60px, 40px); }
+    }
+    @keyframes float2 {
+      0%, 100% { transform: translate(0,0); }
+      50%       { transform: translate(-40px, -60px); }
+    }
+
+    /* ─── Layout ────────────────────────────────────────────────────────────── */
+    .wrapper {
+      position: relative; z-index: 1;
+      max-width: 820px; margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* ─── Header ────────────────────────────────────────────────────────────── */
+    header { text-align: center; margin-bottom: 48px; }
+    .logo-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 100px; padding: 6px 16px;
+      font-size: 12px; font-weight: 500; letter-spacing: 0.08em;
+      color: var(--accent); text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+    .logo-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.85); }
+    }
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 700; line-height: 1.15;
+      background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 14px;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      color: var(--text-muted); font-size: 1.05rem; font-weight: 400; line-height: 1.6;
+    }
+
+    /* ─── Card ──────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.5;
+    }
+    .card-title {
+      font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    /* ─── Prompt Input ──────────────────────────────────────────────────────── */
+    .prompt-wrapper { position: relative; }
+    #prompt-input {
+      width: 100%; min-height: 100px; max-height: 200px;
+      padding: 18px 20px;
+      background: var(--surface2);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: var(--font); font-size: 1rem;
+      line-height: 1.6; resize: vertical;
+      transition: border-color 0.25s, box-shadow 0.25s;
+      outline: none;
+    }
+    #prompt-input::placeholder { color: var(--text-dim); }
+    #prompt-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .char-count {
+      text-align: right; font-size: 11px; color: var(--text-dim);
+      margin-top: 6px; font-family: var(--mono);
+      transition: color 0.2s;
+    }
+    .char-count.warn { color: var(--warning); }
+    .char-count.danger { color: var(--error); }
+
+    /* ─── Example Pills ─────────────────────────────────────────────────────── */
+    .examples {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;
+    }
+    .example-pill {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 100px; padding: 6px 14px;
+      font-size: 12px; color: var(--text-muted);
+      cursor: pointer; transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .example-pill:hover {
+      border-color: var(--accent); color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    /* ─── Generate Button ───────────────────────────────────────────────────── */
+    #generate-btn {
+      width: 100%; margin-top: 20px;
+      padding: 16px 28px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+      border: none; border-radius: 10px;
+      color: #fff; font-family: var(--font);
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.02em;
+      transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      box-shadow: 0 4px 24px rgba(94,129,244,0.3);
+    }
+    #generate-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(94,129,244,0.45);
+    }
+    #generate-btn:active:not(:disabled) { transform: translateY(0); }
+    #generate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-icon { font-size: 1.2rem; }
+
+    /* ─── Progress Panel ────────────────────────────────────────────────────── */
+    #progress-panel {
+      display: none;
+    }
+    .progress-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .progress-label {
+      font-size: 0.85rem; font-weight: 500; color: var(--text-muted);
+    }
+    .progress-pct {
+      font-family: var(--mono); font-size: 0.85rem; color: var(--accent);
+      font-weight: 600;
+    }
+    .progress-track {
+      height: 5px; background: var(--surface2);
+      border-radius: 100px; overflow: hidden; margin-bottom: 20px;
+    }
+    .progress-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 100px;
+      transition: width 0.6s ease;
+      box-shadow: 0 0 12px var(--accent);
+    }
+
+    /* ─── Log Console ───────────────────────────────────────────────────────── */
+    .log-console {
+      background: #060a12;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      height: 220px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .log-console::-webkit-scrollbar { width: 4px; }
+    .log-console::-webkit-scrollbar-track { background: transparent; }
+    .log-console::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .log-line { color: var(--text-muted); }
+    .log-line.info  { color: #6ec3f4; }
+    .log-line.success { color: #27ae60; }
+    .log-line.warn  { color: #f39c12; }
+    .log-line.error { color: #e74c3c; }
+    .log-prompt { color: var(--accent); margin-right: 6px; }
+
+    /* ─── Result Panel ──────────────────────────────────────────────────────── */
+    #result-panel { display: none; }
+    .result-inner {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 16px; padding: 8px 0;
+    }
+    .result-icon {
+      font-size: 2.8rem;
+      animation: bounce-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes bounce-in {
+      from { transform: scale(0.3); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+    .result-title {
+      font-size: 1.3rem; font-weight: 700;
+      background: linear-gradient(135deg, #fff 30%, var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .result-meta {
+      display: flex; gap: 24px; flex-wrap: wrap; justify-content: center;
+    }
+    .meta-chip {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 16px;
+      font-size: 13px; text-align: center;
+    }
+    .meta-chip span { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 3px; }
+    .meta-chip strong { color: var(--accent); font-family: var(--mono); }
+
+    #download-btn {
+      padding: 14px 36px;
+      background: linear-gradient(135deg, var(--success), #1a8a4a);
+      border: none; border-radius: 10px;
+      color: #fff; font-family: var(--font);
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.02em;
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 4px 20px rgba(39,174,96,0.35);
+    }
+    #download-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(39,174,96,0.5);
+    }
+    #download-btn:active { transform: translateY(0); }
+
+    #new-btn {
+      padding: 10px 24px;
+      background: transparent; border: 1.5px solid var(--border);
+      border-radius: 10px; color: var(--text-muted);
+      font-family: var(--font); font-size: 0.9rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+    #new-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── Error Banner ──────────────────────────────────────────────────────── */
+    #error-banner {
+      display: none;
+      background: rgba(231,76,60,0.08); border: 1px solid rgba(231,76,60,0.3);
+      border-radius: 10px; padding: 14px 18px;
+      color: #ff6b6b; font-size: 0.9rem;
+      margin-top: 16px;
+    }
+
+    /* ─── API Status Banner ────────────────────────────────────────────── */
+    .api-banner {
+      display: flex; align-items: center; gap: 10px;
+      border-radius: 10px; padding: 12px 18px;
+      font-size: 13px; margin-bottom: 24px;
+      border: 1px solid;
+    }
+    .api-banner.ai-active {
+      background: rgba(39,174,96,0.08);
+      border-color: rgba(39,174,96,0.35);
+      color: #4caf80;
+    }
+    .api-banner.fallback {
+      background: rgba(243,156,18,0.08);
+      border-color: rgba(243,156,18,0.35);
+      color: #f0a832;
+    }
+    .api-banner.loading { opacity: 0.4; border-color: var(--border); color: var(--text-muted); }
+    .api-banner a { color: inherit; font-weight: 600; }
+    .api-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .api-banner.ai-active .api-dot { background: #27ae60; box-shadow: 0 0 6px #27ae60; }
+    .api-banner.fallback .api-dot { background: #f39c12; box-shadow: 0 0 6px #f39c12; }
+    .api-banner.loading .api-dot { background: var(--text-dim); }
+
+    /* ─── Features Row ──────────────────────────────────────────────────────── */
+    .features {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px; margin-top: 8px;
+    }
+    .feature-chip {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      font-size: 13px; color: var(--text-muted);
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .feature-chip-icon { font-size: 1.3rem; flex-shrink: 0; }
+    .feature-chip strong { color: var(--text); display: block; margin-bottom: 2px; }
+
+    /* ─── Footer ────────────────────────────────────────────────────────────── */
+    footer {
+      text-align: center; margin-top: 40px;
+      color: var(--text-dim); font-size: 12px; line-height: 1.8;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ─── Spinner ───────────────────────────────────────────────────────────── */
+    .spinner {
+      width: 18px; height: 18px; border-radius: 50%;
+      border: 2.5px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+
+  <div class="wrapper">
+
+    <!-- ── Header ──────────────────────────────────────────────── -->
+    <header>
+      <div class="logo-badge">
+        <div class="logo-dot"></div>
+        Auto-PPT Agent &nbsp;·&nbsp; MCP + OpenRouter AI
+      </div>
+
+      <!-- API Status Banner -->
+      <div class="api-banner loading" id="api-banner">
+        <div class="api-dot"></div>
+        <span id="api-banner-text">Checking API status...</span>
+      </div>
+
+      <h1>Turn one sentence into<br>a full presentation</h1>
+      <p class="subtitle">Powered by an agentic ReAct loop — plans, generates content, and<br>builds a styled .pptx file automatically.</p>
+    </header>
+
+    <!-- ── Prompt Card ──────────────────────────────────────────── -->
+    <div class="card" id="input-card">
+      <div class="card-title">📝 Your Prompt</div>
+
+      <div class="prompt-wrapper">
+        <textarea
+          id="prompt-input"
+          placeholder="Create a 5-slide presentation on Artificial Intelligence for beginners..."
+          maxlength="500"
+          rows="4"
+        ></textarea>
+        <div class="char-count" id="char-count">0 / 500</div>
+      </div>
+
+      <div class="examples">
+        <span class="example-pill" onclick="fillPrompt(this)">5 slides on AI for beginners</span>
+        <span class="example-pill" onclick="fillPrompt(this)">Climate Change for high school students</span>
+        <span class="example-pill" onclick="fillPrompt(this)">Python programming fundamentals</span>
+        <span class="example-pill" onclick="fillPrompt(this)">The future of renewable energy</span>
+        <span class="example-pill" onclick="fillPrompt(this)">Machine learning basics, 6 slides</span>
+      </div>
+
+      <button id="generate-btn" onclick="startGeneration()">
+        <span class="btn-icon">⚡</span>
+        Generate Presentation
+      </button>
+
+      <div id="error-banner"></div>
+    </div>
+
+    <!-- ── Progress Card ────────────────────────────────────────── -->
+    <div class="card" id="progress-panel">
+      <div class="card-title">🤖 Agent Working...</div>
+      <div class="progress-header">
+        <span class="progress-label" id="progress-label">Initializing...</span>
+        <span class="progress-pct" id="progress-pct">0%</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="log-console" id="log-console">
+        <span class="log-prompt">$</span><span class="log-line"> waiting for agent...</span>
+      </div>
+    </div>
+
+    <!-- ── Result Card ───────────────────────────────────────────── -->
+    <div class="card" id="result-panel">
+      <div class="result-inner">
+        <div class="result-icon">🎉</div>
+        <div class="result-title">Presentation Ready!</div>
+        <div class="result-meta" id="result-meta"></div>
+        <button id="download-btn" onclick="downloadFile()">
+          ⬇️ &nbsp;Download .pptx
+        </button>
+        <button id="new-btn" onclick="resetUI()">
+          ↩ Create Another
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Feature Chips ─────────────────────────────────────────── -->
+    <div class="features">
+      <div class="feature-chip">
+        <span class="feature-chip-icon">🗓️</span>
+        <div><strong>Mandatory Planning</strong>Agent always plans before writing</div>
+      </div>
+      <div class="feature-chip">
+        <span class="feature-chip-icon">🔧</span>
+        <div><strong>MCP Tool Layer</strong>Modular, independently callable tools</div>
+      </div>
+      <div class="feature-chip">
+        <span class="feature-chip-icon">🛡️</span>
+        <div><strong>Never Crashes</strong>Graceful fallback for every failure</div>
+      </div>
+      <div class="feature-chip">
+        <span class="feature-chip-icon">🎨</span>
+        <div><strong>Styled Slides</strong>Dark premium theme with blue accents</div>
+      </div>
+    </div>
+
+    <footer>
+      Auto-PPT Agent &nbsp;·&nbsp; Agentic AI &amp; MCP Architecture<br>
+      Powered by <a href="https://openrouter.ai" target="_blank">OpenRouter</a> &nbsp;&amp;&nbsp;
+      <a href="https://python-pptx.readthedocs.io" target="_blank">python-pptx</a>
+    </footer>
+
+  </div><!-- /wrapper -->
+
+  <script>
+    // ─── State ─────────────────────────────────────────────────────────────────
+    let currentJobId = null;
+    let eventSource  = null;
+
+    // ─── Character counter ──────────────────────────────────────────────────────
+    const promptInput = document.getElementById('prompt-input');
+    const charCount   = document.getElementById('char-count');
+
+    promptInput.addEventListener('input', () => {
+      const n = promptInput.value.length;
+      charCount.textContent = `${n} / 500`;
+      charCount.className = 'char-count' + (n > 450 ? (n > 490 ? ' danger' : ' warn') : '');
+    });
+
+    // ─── Example pill click ─────────────────────────────────────────────────────
+    function fillPrompt(el) {
+      const text = el.textContent.trim();
+      promptInput.value = `Create a presentation on ${text}`;
+      promptInput.dispatchEvent(new Event('input'));
+      promptInput.focus();
+    }
+
+    // ─── Start generation ───────────────────────────────────────────────────────
+    async function startGeneration() {
+      const prompt = promptInput.value.trim();
+      if (!prompt) {
+        showError('Please enter a prompt before generating.');
+        return;
+      }
+
+      hideError();
+      setGenerating(true);
+      showPanel('progress');
+
+      // Reset log console
+      document.getElementById('log-console').innerHTML = '';
+      setProgress(5, 'Sending request to agent...');
+
+      try {
+        const resp = await fetch('/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || 'Server error');
+        }
+
+        currentJobId = data.job_id;
+        startSSE(currentJobId);
+
+      } catch (err) {
+        setGenerating(false);
+        showPanel('input');
+        showError('Failed to start generation: ' + err.message);
+      }
+    }
+
+    // ─── Server-Sent Events ─────────────────────────────────────────────────────
+    function startSSE(jobId) {
+      if (eventSource) eventSource.close();
+
+      eventSource = new EventSource(`/stream/${jobId}`);
+
+      eventSource.onmessage = (e) => {
+        const event = JSON.parse(e.data);
+
+        if (event.type === 'ping') return;
+
+        if (event.type === 'log') {
+          appendLog(event.message);
+          if (event.progress != null) setProgress(event.progress, event.message);
+        }
+
+        if (event.type === 'done') {
+          eventSource.close();
+          setProgress(100, '✅ Complete!');
+          appendLog(event.message, 'success');
+          setTimeout(() => showResult(event), 800);
+        }
+
+        if (event.type === 'error') {
+          eventSource.close();
+          setGenerating(false);
+          appendLog(event.message, 'error');
+          showError(event.message);
+        }
+      };
+
+      eventSource.onerror = () => {
+        // SSE closed — poll for status as fallback
+        eventSource.close();
+        pollStatus(jobId);
+      };
+    }
+
+    // ─── Polling fallback ───────────────────────────────────────────────────────
+    async function pollStatus(jobId) {
+      try {
+        const resp = await fetch(`/status/${jobId}`);
+        const job  = await resp.json();
+
+        if (job.status === 'done') {
+          setProgress(100, 'Complete!');
+          showResult({ filename: job.file_path?.split(/[\\/]/).pop(), slides: 5, topic: '' });
+        } else if (job.status === 'error') {
+          setGenerating(false);
+          showPanel('input');
+          showError(job.error || 'Generation failed');
+        } else {
+          setTimeout(() => pollStatus(jobId), 2000);
+        }
+      } catch (e) {
+        setTimeout(() => pollStatus(jobId), 3000);
+      }
+    }
+
+    // ─── Show result ────────────────────────────────────────────────────────────
+    function showResult(event) {
+      setGenerating(false);
+      showPanel('result');
+
+      const meta = document.getElementById('result-meta');
+      meta.innerHTML = `
+        <div class="meta-chip"><span>File</span><strong>${event.filename || 'presentation.pptx'}</strong></div>
+        <div class="meta-chip"><span>Slides</span><strong>${event.slides || '—'}</strong></div>
+        <div class="meta-chip"><span>Topic</span><strong>${event.topic || '—'}</strong></div>
+      `;
+    }
+
+    // ─── Download ───────────────────────────────────────────────────────────────
+    function downloadFile() {
+      if (!currentJobId) return;
+      window.location.href = `/download/${currentJobId}`;
+    }
+
+    // ─── Reset ──────────────────────────────────────────────────────────────────
+    function resetUI() {
+      currentJobId = null;
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      showPanel('input');
+      setGenerating(false);
+      document.getElementById('log-console').innerHTML = '';
+      setProgress(0, '');
+    }
+
+    // ─── UI Helpers ─────────────────────────────────────────────────────────────
+    function showPanel(name) {
+      document.getElementById('input-card').style.display    = name === 'input'    ? 'block' : 'none';
+      document.getElementById('progress-panel').style.display = name === 'progress' ? 'block' : 'none';
+      document.getElementById('result-panel').style.display   = name === 'result'   ? 'block' : 'none';
+    }
+
+    function setGenerating(active) {
+      const btn = document.getElementById('generate-btn');
+      btn.disabled = active;
+      btn.innerHTML = active
+        ? `<span class="spinner"></span> Generating...`
+        : `<span class="btn-icon">⚡</span> Generate Presentation`;
+    }
+
+    function setProgress(pct, label) {
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-pct').textContent  = pct + '%';
+      if (label) document.getElementById('progress-label').textContent = label.replace(/\[.*?\]\s*/g, '').trim().slice(0, 60);
+    }
+
+    function appendLog(message, type = 'info') {
+      const console_ = document.getElementById('log-console');
+      const line = document.createElement('div');
+      line.className = `log-line ${type}`;
+      // Clean ANSI / log prefix noise
+      const clean = message.replace(/\x1b\[[0-9;]*m/g, '').trim();
+      line.textContent = clean;
+      console_.appendChild(line);
+      console_.scrollTop = console_.scrollHeight;
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error-banner');
+      el.textContent = '⚠️  ' + msg.replace(/\x1b\[[0-9;]*m/g, '');
+      el.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('error-banner').style.display = 'none';
+    }
+
+    // ─── Init ──────────────────────────────────────────────────────────────────
+    showPanel('input');
+
+    // Check API health on load
+    fetch('/health')
+      .then(r => r.json())
+      .then(data => {
+        const banner = document.getElementById('api-banner');
+        const text   = document.getElementById('api-banner-text');
+        if (data.api_configured) {
+          banner.className = 'api-banner ai-active';
+          text.textContent = `✅  AI Mode Active — OpenRouter key detected (${data.api_key_preview}). Content will be generated by LLM.`;
+        } else {
+          banner.className = 'api-banner fallback';
+          text.innerHTML = `⚠️  Fallback Mode — No <code>OPENROUTER_API_KEY</code> in .env. `
+            + `Slides will use rule-based content. <a href="https://openrouter.ai/keys" target="_blank">Get a free key →</a>`;
+        }
+      })
+      .catch(() => {
+        document.getElementById('api-banner').style.display = 'none';
+      });
+
+    // Prompt input: submit on Ctrl+Enter
+    promptInput.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'Enter') startGeneration();
+    });
+  </script>
+</body>
+</html>
